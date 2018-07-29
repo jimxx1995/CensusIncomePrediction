@@ -1,0 +1,174 @@
+---
+title: "Predicting Income with Census Income Data"
+author: "Benny Chen, Tsz Chan"
+date: "December 11, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include = FALSE, echo = FALSE}
+library(ggplot2)
+library(reshape2)
+library(tree)
+library(rpart)
+library(ipred)
+library(randomForest)
+library(e1071)
+library(caret)
+```
+
+###Introduction###
+Using the data from the Census Income Dataset, we wanted to see which tree-based method had the highest predicitve accuracy and which variables have the strongest predictive power in regards to whether an individual earns over $50000 in income. We compare three methods - classification trees, bagged, trees, and random forest.We begin with preprocessing and exploration of the data. Then, we fit the three models using the training data. With the most accurate model, we fit the test data. 
+
+###Exploratory Data Analysis###
+First, we needed to remove missing values that were found in the workclass, native_country, and occupation variables. Removal was appropriate as observations with these missing values made up about 2400 of the 32561 observations. 
+To be used with the models, we needed to aggregate some of the countries of the native_country variable. We chose to aggregate the countries with the 10 fewest occurances in the data into the "other" label, which totaled 137 observations. 
+Based on our prior knowledge, we believed that age, education, and occupation would be important variables. Looking at the proportion of income levels, age and education appear the most different for the two groups. For many of the variables, initial plots were not too insightful due to the fact that the data was not very well balanced. We noticed that the training data had a much larger proportion of incomes greater than $50K, so the AUC metric would be useful. 
+
+Our last step for this phase was to remove some of the variables. We felt that "education" and "education_num" variables were very well correlated so we would only use one to fit our models. 
+
+Looking at boxplots and histograms, we also saw that "capital_gain" and "capital_loss" contained many outliers and were heavely skewed. This amount of variability just from the fact that these two variables had most occurances around 0 but also very large outlier values would severely bias their importance. Although decision trees and random forest are quite robust, it should be a point of attention. 
+
+The last variable of interest was "fnlwgt", which is a stastical metric for each invididual. We felt that this was not relevant to the individual's income level based on the variable's meaning so we decided to not use it in our analysis. 
+
+Looking at boxplots and barplots of various variables, it seems that there is a noticeable difference in age and education of the two income groups. The occupation boxplot showed large differences in income distributions of the respective occupations. These can be seen in the provided images. 
+
+###Analysis###
+
+Classificaiton Tree:
+
+![](treeplot.png)
+
+![](treeROC.png)
+We decided to use the "education_num" variable over the "education" variable as it was cleaner for the tree model. 5-fold cross validation was used to tune the complexity parameter and the minimum split size. Decreasing CP and increasing minsplit would help to prevent overfitting by growing too large of a tree as CP decreases. We fit the training data with the combination with the lowest misclassification error, using rpart from the rpart library, then pruned the tree with the CP with the lowest error. This produced a training accuracy of 0.861. The AUC value was 0.872.  
+
+The following are the 5 most important varibales as measured by the average decrease in gini:
+
+```{r, echo = FALSE}
+data.frame("Variable" = c("relationship", "marital_status", "capital_gain",
+                          "education",
+                          "occupation","sex", "age"),
+           "Mean Decrease Gini" = c(2302.474, 2241.866, 1095.988, 1016.117,
+                                    939.125, 764.439, 629.203))
+```
+
+ 
+It is interesting that relationship and martial status had more discriminatory power based on this metric than variables such as age and education. 
+
+
+Bagged Tree:
+
+![Number of Trees and the Error](baggedtree.png)
+
+![](bagpref.png)
+
+![](NodeSizeError.png)
+A bagged tree is a special case of a random forest where all the predictors are considered at each split, which is reflected in the mtry parameter. We decided to tune the number of trees and minimum node size. It can be seen from the graph of errors and number of trees that 300 trees stabilizes the error rate. Using CV to calculate the errors for different minimum node sizes, the plot shows that around a minimum of 75 produces the optimal error. Choosing 75 allows for controlling the size of the trees. 
+
+Using randomForest from the randomForest library, we fit the training data, getting a training accuracy of 0.813. The AUC was 0.848. 
+
+The seven most important variables were:
+
+```{r, echo = FALSE}
+data.frame("Variables" = c("relationship", "capital_gain", "education_num",
+                            "occupation", "age", "capital_loss",
+                            "hours_per_week"),
+           "Mean Decrease Gini" = c(2302.546, 1099.334, 1096.084, 514.019,
+                                     415.525, 310.240, 259.663))
+```
+
+
+Random Forest:
+
+![](randomforestvarimp.png)
+
+```{r, echo = FALSE}
+data.frame("Variable" = c("relationship", "capital_gain", "marital_status",
+                          "education_num", "occupation", "age",
+                          "capital_loss"),
+           "Mean Decrase Gini" = c(1059.079, 883.724, 842.542, 651.851,
+                                   525.925, 250.805, 151.114))
+```
+
+
+![](randomforestROC.png)
+
+
+A random forest of size 500 trees was fitted using randomForest from the randomForest library. 500 trees is sufficient to provide our results with robustness. 
+
+
+The number of paramaters to use at each split and the minimum leaf size was tuned using 5 fold CV. The minimum leaf size was chosen because the data is fairly unbalanced. The random forest model has a training accuracy of 0.849,  The AUC value was 0.855, lower than that of the tree. It would be useful to look at the false positive rate, which was around 2%. 
+
+Mostly the same variables had the most importance as measured by the mean decrease in gini as for the classification tree, although the values of the mean decrease in gini are noticably lower. This could be due to the fact that the mtry parameter restricted the selection of variables for splitting. 
+
+###Test Data###
+
+![](testtreeROC.png)
+
+![](bagtreeROC.png)
+
+![](randomforesttestROC.png)
+
+Based on the training accuracy the tree is the strongest model. After fitting the tree, the test accuracy was 0.784 and the AUC for the ROC curve was 0.868. Based on the plots, this is the highest AUC of the three, which would indicate that this classifier addresses the unbalanced data classes the best. The confusion matrix was (observed is the columns, predicted is the rows):
+
+```{r, echo = FALSE}
+load("training2.Rdata")
+load("test2.Rdata")
+classification_tree <- rpart(income ~. - fnlwgt - 
+                               education_num,
+                             data = training2, 
+                             parms = list(split = "gini"),
+                             control = rpart.control(cp = 0.001,
+                                              xval = 10, minsplit = 30))
+
+lowest_error_cp <- classification_tree$cptable[which.min(
+                  classification_tree$cptable[, "xerror"]), "CP"]
+
+prune_tree <- prune(classification_tree, cp = lowest_error_cp)
+
+test_predict <- predict(prune_tree, test2, type = "class")
+confusion_matrix <- matrix(0, nrow = 2, ncol = 2, 
+                           dimnames = list(c("<=50K", ">50K"),
+                                          c("<=50K", ">50K")))
+for (i in 1:length(test_predict)) {
+  if (test_predict[i] == test2$income[i] &
+                test_predict[i] == "<=50K"){
+    confusion_matrix[1, 1] <- confusion_matrix[1, 1] + 1
+  } else if (test_predict[i] == test2$income[i] &
+                test_predict[i] == ">50K") {
+      confusion_matrix[2, 2] <- confusion_matrix[2, 2] + 1  
+  } else if (test_predict[i] != test2$income[i] &
+                test_predict[i] == "<=50K") {
+    confusion_matrix[1, 2] <- confusion_matrix[1, 2] + 1
+  } else {
+    confusion_matrix[2, 1] <- confusion_matrix[2, 1] + 1
+  }
+}
+confusion_matrix
+```
+
+The true positive rate (senstivity) was:
+
+```{r, echo = FALSE}
+tpr <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+tpr
+```
+
+The true negative rate (specificity) was:
+
+```{r, echo = FALSE}
+tnr <- confusion_matrix[1, 1] / sum(confusion_matrix[1, ])
+tnr
+```
+
+
+###Conclusion###
+The classification tree is the strongest classifier of the three methods. The accuracy was 0.856 which was lower than the training accuracy of 0.861. This does indicate some overfitting of the training model. All three models indicated that the most discriminative variables were relationship, education, age, and occupation, although there were some differences in ranking. This is in line with our expecations that age, job, and level of education are strong indicators of income. It was interesting that race and gender didn't appear to be significant variables for the three models since these are widely thought of as key factors of income inequality. 
+
+Due to computational limits, more granular tuning of parameters could not be done, but it would be useful to tune more of the parameters and more values for each parameter to address the unbalanced nature of the data. 

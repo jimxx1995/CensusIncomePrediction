@@ -1,0 +1,473 @@
+---
+title: "Stat 154 Project"
+author: "Benny Chen,Jimmy Chan"
+date: "November 25, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(tree)
+library(rpart)
+library(ipred)
+library(randomForest)
+library(e1071)
+library(caret)
+library(mlr)
+library(ROCR)
+```
+
+
+```{r}
+training <- read.table("data/adult.data",
+                       sep = ",")
+test <- read.table("data/adult.test",
+                   sep = ",")
+```
+
+```{r}
+names(training) <- c("age", "workclass", "fnlwgt", "education", 
+                     "education_num", "marital_status", 
+                     "occupation", "relationship", "race",
+                     "sex", "capital_gain", "capital_loss", 
+                     "hours_per_week", "native_country", "income")
+
+names(test) <- c("age", "workclass", "fnlwgt", "education", 
+                     "education_num", "marital_status", 
+                     "occupation", "relationship", "race",
+                     "sex", "capital_gain", "capital_loss", 
+                     "hours_per_week", "native_country", "income")
+```
+
+```{r}
+summary(training)
+```
+
+Remove missing values in workclass and native-country variables.
+
+```{r}
+training2 <- training[training$workclass != " ?" &
+                       training$native_country != " ?" &
+                      training$occupation != " ?", ]
+training2$workclass <- factor(training2$workclass)
+training2$native_country <- factor(training2$native_country)
+```
+
+```{r}
+test2 <- test[test$workclass != " ?" &
+                       test$native_country != " ?" &
+                test$occupation != "?", ]
+
+test2$occupation <- factor(test2$occupation)
+test2$workclass <- factor(test2$workclass)
+levels(training2$workclass) <- levels(test2$workclass)
+```
+
+```{r}
+ggplot(data = training2[,c("age", "income")]) + 
+  geom_boxplot(aes(y = age, x = income, fill = income)) + xlab("Income") +
+  ylab("Age") + ggtitle("Age and Income")
+```
+
+```{r}
+ggplot(data = training2) + geom_bar(aes(x = workclass, fill= income)) +
+  coord_flip() + ggtitle("Workclass and Income")
+```
+
+```{r}
+ggplot(data = training2) + geom_bar(aes(x = occupation, fill= income)) +
+  coord_flip() + ggtitle("Occupation and Income")
+```
+
+```{r}
+ggplot(data = training2) + geom_bar(aes(x = education, fill= income)) +
+  coord_flip() + ggtitle("Education and Income")
+```
+
+```{r}
+ggplot(data = training2) + geom_density(aes(x = age, fill = income), 
+                                        alpha = 0.5)
+```
+
+The median age of people making more than 50K is higher than the median age of people making less than 50k. Most people earning more than 50K are around 50 years old. This is consistent with the logic that older people tend to earn more. 
+
+```{r}
+ggplot(data = training2) + geom_bar(aes(x = sex, fill = income)) +
+  ggtitle("Gender and Income")
+```
+
+
+
+The data has much more males than females so the barplot is not balanced. It appears that a people making less than 50K make up a larger portion of the female population than they do for males, although for the dataset, people making fewer than 50K make up the large majority of the data, so it is not too different from the overall sample. 
+
+```{r}
+ggplot(data = training2) + geom_bar(aes(x = race, fill = income)) +
+  coord_flip() + ggtitle("Race and Income")
+```
+
+From the barplot, it appears that a larger proportion of whites have an income greater than 50k compared to the proportion for the other races. 
+
+
+```{r}
+training_numerical_melt <- melt(training2[, c("age", "fnlwgt", "capital_gain", 
+                                   "capital_loss", "hours_per_week",
+                                   "education_num", "income")], id = "income")
+ggplot(data = training_numerical_melt) + geom_boxplot(aes(x = variable, y = value))
+```
+
+```{r}
+histogram(training2$capital_gain)
+
+```
+
+```{r}
+histogram(training2$capital_loss)
+```
+
+```{r}
+ggplot(data = training_numerical_melt) + geom_boxplot(aes(x = variable, y = value,
+                                                     fill = income))
+```
+
+Education and age appear to be the variables that are most different between the two income levels. 
+
+```{r}
+test_income <- rep(0, nrow(test2))
+for (i in 1:length(test2$income)) {
+  if (test2$income[i] == levels(test2$income)[1]) {
+    test_income[i] = "<=50K"
+  } else {
+    test_income[i] = ">50K"
+  }
+}
+test2$income <- factor(test_income)
+
+train_income <- rep(0, nrow(test2))
+for (i in 1:length(training2$income)) {
+  if (training2$income[i] == levels(training2$income)[1]) {
+    train_income[i] = "<=50K"
+  } else {
+    train_income[i] = ">50K"
+  }
+}
+training2$income <- factor(train_income)
+```
+
+Bin native-countries
+
+```{r}
+counts <- table(training2$native_country)
+summary(data.frame(counts))
+```
+
+```{r}
+others <- sort(counts)[1:10]
+```
+
+```{r}
+training_native_country <- training2$native_country
+levels(training_native_country) <- c(levels(training_native_country), 
+                                      "other")
+training_native_country[training_native_country %in% names(others)] <-
+  as.factor("other")
+
+training2$native_country <- training_native_country
+training2$native_country <- factor(training_native_country)
+levels(training2$workclass) <- levels(test2$workclass)
+```
+
+```{r}
+test_native_country <- test2$native_country
+levels(test_native_country) <- c(levels(test_native_country), "other")
+test_native_country[test_native_country %in% names(others)] <-
+                        as.factor("other")
+test2$native_country <- factor(test_native_country)
+test2$workclass <- factor(test2$workclass)
+```
+
+
+```{r}
+save(training2, file = "training2.Rdata")
+save(test2, file = "test2.Rdata")
+```
+
+Remove the education_num and fnlwgt
+```{r}
+training2$fnlwgt<-NULL
+test2$fnlwgt<-NULL
+training2$education_num<-NULL
+test2$education_num<-NULL
+
+```
+1.Classification Tree 
+
+```{r}
+#set cp =0.001 and see the change on xerror corresponding to the cp (see plotcp)
+ct<- rpart(income ~., data = training2, parms = list(split = "gini"))
+plot(ct)
+text(ct, pretty = 0)
+tree_summary <- summary(ct)
+
+# 7 most important varibale
+tree_summary$variable.importance[1:7]
+```
+
+Three parameters that are commonly used in training for tuning are the complexity parameter, maxdepth, and minsplit(code sets minbucket to minsplit/3).
+
+
+1.2 Tuning the minsplit and maxdepth
+```{r,eval=FALSE}
+#set the cp =0.0001
+ct_tune_first <- tune.rpart(income ~., data = training2, 
+                            parms =list(split="gini"),
+                            minsplit=c(25,50,75,100,250,500,1000),
+                           maxdepth = c(2,4,6,8,10,12,14),cp=0.0001)
+
+```
+
+1.3 Tuning the CP with CV(Using the rpart.control and set xval=10)and with the tuned minsplit
+    and maxdepth
+```{r}
+#Tune the CP with cross-validation by set xval=10
+#set cp =0.001 to see the changes on xerror corresponding to the cp (see plotcp)
+ct_tuning_cp<- rpart(income ~., data = training2,
+                     parms = list(split = "gini"),
+                     minsplit =50,maxdepth = 10,
+                     cp = 0.0001,xval = 10)
+printcp(ct_tuning_cp)
+plotcp(ct_tuning_cp)
+#Choosing a CP that minimizes the cross-validated error to avoid overfitting the data
+cp_value<- ct_tuning_cp$cptable[which.min(ct_tuning_cp$cptable[,"xerror"]),"CP"]
+
+```
+
+1.4 Pruncing tree
+```{r}
+prune_tree <- prune(ct_tuning_cp, cp = cp_value)
+plot(prune_tree)
+text(prune_tree, pretty = 0)
+summary(prune_tree)
+prune_tree_summary<-summary(prune_tree)
+
+```
+
+1.5 Seven most important variables
+```{r}
+prune_tree_summary$variable.importance[1:7]
+```
+1.6 Accuracy
+```{r}
+prune_tree_predict <- predict(prune_tree, type = "class")
+prune_tree_accuracy <- sum(prune_tree_predict == training2$income) / 
+  nrow(training2)
+prune_tree_accuracy
+```
+
+1.7 ROC and AUC
+```{r}
+prune_tree_prob <- predict(prune_tree, type = "prob")
+prune_perf <- prediction(prune_tree_prob[,2], training2$income)
+tree_perf <- ROCR::performance(prune_perf, measure = "tpr", x.measure = "fpr")
+#ROC
+plot(tree_perf)
+#AUC
+auc_perf <- ROCR::performance(prune_perf, "auc")
+auc_perf@y.values
+```
+
+2.Bagged Tree
+
+```{r}
+bagged_tree <- randomForest(income ~.,
+                            data = training2, 
+                            mtry = ncol(training2) - 1, importance = TRUE)
+```
+
+•	Two parameters that are commonly used in training for tuning are the number of tree and minimum node size (implicitly set the depth of tree).
+
+2.1 Tuning the number of tree
+```{r}
+plot(bagged_tree)
+```
+
+
+2.2 Tuning the depth of tree
+```{r,eval=FALSE}
+err<-c(1:9)
+for (i in c(10,25,50,75,100,200,300,400,500)){
+  for(j in 1:9){
+    err[j]<-randomForest(income ~.,data = training2,
+                         nodesize= i,
+                         mtry = ncol(training2)-1,ntree=300)$err.rate[300]
+  }
+}
+
+nodes_size<-c(10,25,50,75,100,200,300,400,500)
+nodesize_plot<-cbind(nodes_size,err)
+nodesize_plot<-as.data.frame(nodesize_plot)
+
+
+ggplot(data=nodesize_plot, aes(x=nodesize_plot[,1], y=nodesize_plot[,2])) +
+    geom_line()+labs(title="Nodesize Plot",
+        x ="Size of Terminal Nodes", y = "Error Rate")+ylim(0.17, 0.2)
+
+
+```
+
+2.3 Seven most important variables
+```{r}
+bag_new<-randomForest(income ~.,data = training2,
+                      mtry = ncol(training2)-1,
+                      ntree=300,nodesize=75,
+                      importance = TRUE)
+
+sort(bag_new$importance[,"MeanDecreaseGini"], 
+     decreasing = TRUE)[1:7]
+```
+2.4 Accuracy
+```{r}
+bag_new_predict <- predict(bag_new, type = "class")
+bag_new_accuracy <- sum(bag_new_predict == training2$income) / 
+                      nrow(training2)
+bag_new_accuracy
+```
+
+2.5 ROC and AUC
+```{r}
+bag_new_prob <- predict(bag_new, type = "prob")
+bag_new_perf <- prediction(bag_new_prob[,2], training2$income)
+bag_perf <- ROCR::performance(bag_new_perf, measure = "tpr", x.measure = "fpr")
+#ROC
+plot(bag_perf)
+#AUC
+bag_auc_perf <- ROCR::performance(bag_new_perf, "auc")
+bag_auc_perf@y.values
+```
+
+
+3.Random Forest
+
+```{r}
+rf <- randomForest(income ~.,data = training2, importance = TRUE)
+```
+
+•	Three parameters that are commonly used in training for tuning are the number of tree , minimum node size (implicitly set the depth of tree) and mtry(the number of predictors).
+
+3.1 Tuning the number of tree
+```{r}
+plot(rf)
+```
+
+
+3.2 Tuning the depth of tree and the mtry(using the random searching in MLRpackage)
+```{r,eval=FALSE}
+
+trainTask <- makeClassifTask(data = training2,target = "income")
+getParamSet("classif.randomForest")
+rf <- makeLearner("classif.randomForest", predict.type = "response", par.vals = list(ntree = 300))
+rf_param <- makeParamSet(
+  makeIntegerParam("mtry", lower = 3, upper = 15),
+  makeDiscreteParam("nodesize",c(10,25,50,75,100,200,300,400,500))
+)
+set_cv <- makeResampleDesc("CV",iters = 3L)
+rancontrol <- makeTuneControlRandom(maxit = 50L)
+rf_tune <- tuneParams(learner = rf, resampling = set_cv, task = trainTask, par.set = rf_param, control = rancontrol, measures = acc)
+rf_tune$y
+rf_tune$x
+
+```
+3.3 New Model with tuned parameter
+```{r}
+rf_new <- randomForest(income ~.,data = training2,mtry=4,nodesize=400,ntree=300, importance = TRUE)
+```
+
+3.4 Seven most important variables
+```{r}
+sort(rf_new$importance[,"MeanDecreaseGini"], 
+     decreasing = TRUE)[1:7]
+```
+3.5 Accuracy
+```{r}
+rf_new_predict <- predict(rf_new, type = "class")
+rf_new_accuracy <- sum(rf_new_predict == training2$income) / 
+                      nrow(training2)
+rf_new_accuracy
+```
+
+3.5 ROC and AUC
+```{r}
+rf_new_prob <- predict(rf_new, type = "prob")
+rf_new_perf <- prediction(rf_new_prob[,2], training2$income)
+rf_perf <- ROCR::performance(rf_new_perf, measure = "tpr", x.measure = "fpr")
+#ROC
+plot(rf_perf)
+#AUC
+rf_auc_perf <- ROCR::performance(rf_new_perf, "auc")
+rf_auc_perf@y.values
+```
+
+
+
+4.Model Selection
+
+4.1 Classification tree
+```{r}
+test_predict_prob <- predict(prune_tree, test2)
+
+test_predict <- predict(prune_tree, test2, type = "class")
+tree_confusion_Matrix<-confusionMatrix(test_predict,test2$income)
+tree_confusion_Matrix
+
+tree_tpr <- tree_confusion_Matrix$byClass[3]
+tree_tpr
+tree_tnr <- tree_confusion_Matrix$byClass[4]
+tree_tnr
+tree_perf <- prediction(test_predict_prob[,2], test2$income)
+test_perf <- ROCR::performance(tree_perf, measure = "tpr", x.measure = "fpr")
+plot(test_perf, main = "Test Tree ROC")
+test_auc <- ROCR::performance(tree_perf, "auc")
+test_auc@y.values
+
+```
+
+
+
+4.2 Bagged tree
+```{r}
+bag_predict_class<- predict(bag_new, test2, type = "class")
+confusionMatrix(bag_predict_class,test2$income)
+
+
+bag_predict_prob <- predict(bag_new, test2, type = "prob")
+bag_predict <- prediction(bag_predict_prob[,2], test2$income)
+bag_perf <- ROCR::performance(bag_predict, measure = "tpr", x.measure = "fpr")
+plot(bag_perf, main = "Test Bagged Tree ROC")
+bag_auc <- ROCR::performance(bag_predict, "auc")
+bag_auc@y.values
+```
+
+4.3 Random Forest
+```{r}
+rf_predict_class<- predict(rf_new, test2, type = "class")
+rf_confusion_Matrix<-confusionMatrix(rf_predict_class,test2$income)
+rf_confusion_Matrix
+
+rf_tpr <- rf_confusion_Matrix$byClass[3]
+tpr
+rf_tnr <- rf_confusion_Matrix$byClass[4]
+tnr
+
+rf_predict_prob <- predict(rf_new, test2, type = "prob")
+rt_predict <- ROCR::prediction(rf_predict_prob[,2], test2$income)
+rt_perf <- ROCR::performance(rt_predict, measure = "tpr", x.measure = "fpr")
+plot(rt_perf, main = "Test Random Forest ROC")
+rf_auc <- ROCR::performance(rt_predict, "auc")
+rf_auc@y.values
+
+```
+
