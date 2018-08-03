@@ -24,7 +24,7 @@ library(caret)
 ```
 
 ###Introduction###
-Using the data from the Census Income Dataset, we wanted to see which tree-based method had the highest predicitve accuracy and which variables have the strongest predictive power in regards to whether an individual earns over $50000 in income. We compare three methods - classification trees, bagged, trees, and random forest.We begin with preprocessing and exploration of the data. Then, we fit the three models using the training data. With the most accurate model, we fit the test data. 
+Using the data from the Census Income Dataset, we wanted to see which tree-based method had the highest predicitve accuracy and which variables have the strongest predictive power in regards to whether an individual earns over $50000 in income. We compare three methods - classification trees, bagged trees, and random forest.We begin with preprocessing and exploration of the data. Then, we fit the three models using the training data. With the most accurate model, we fit the test data. 
 
 ###Exploratory Data Analysis###
 First, we needed to remove missing values that were found in the workclass, native_country, and occupation variables. Removal was appropriate as observations with these missing values made up about 2400 of the 32561 observations. 
