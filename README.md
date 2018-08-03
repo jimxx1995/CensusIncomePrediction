@@ -1,6 +1,9 @@
 # Census Income Prediction Project
-The purpose of this project is to build models on the Census Income Data Set.
-The prediction task is to determine whether a person makes over 50K a year.
+The purpose of this project is to build models on the Census Income Data Set. The prediction task is to determine whether a person makes over 50K a year. Using the data from the Census Income Dataset, we wanted to see which tree-based method had the highest
+predicitve accuracy and which variables have the strongest predictive power in regards to whether an individual
+earns over $50000 in income. We compare three methods - classification trees, bagged, trees, and random
+forest.We begin with preprocessing and exploration of the data. Then, we fit the three models using the
+training data. With the most accurate model, we fit the test data.
  
 ## Data Set
 The data set is in the `data` folder. It contains `adult.data` for training and `adult.test` for testing. It describes 15 variables on a sample of individuals from the US Census database. 
